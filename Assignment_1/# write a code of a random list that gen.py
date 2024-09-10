@@ -5,7 +5,7 @@ import statistics
 import matplotlib.pyplot as plt
 
 # create a class for the grosery store
-class GroseryStore(sim.Component):
+class GroceryStore(sim.Component):
     def process(self):
         while True:
             Customer()
