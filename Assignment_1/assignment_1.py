@@ -3,6 +3,7 @@ import random
 import math
 import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 
 
 # Set the model to yield-based (allow use of 'yield' in process functions)
@@ -27,6 +28,8 @@ route_1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G']  # 40% follow this route
 route_2 = ['B', 'C', 'D', 'E', 'A', 'F', 'G']  # 60% follow this route
 
 customers_info = pd.DataFrame(columns=['customer', 'cart', 'arrival_time', 'departure_time', 'total_time', 'cart_wait', 'bread_wait', 'cheese_wait', 'grocery_list', 'item_count', 'route'])
+shop_info = pd.DataFrame(columns=["time", 'customers_in_store', 'cart_requestors','bread_requestors','cheese_requestors', 'checkout_requestors'])
+
 
 class Customer(sim.Component):
     def process(self):
@@ -38,6 +41,9 @@ class Customer(sim.Component):
             self.route = route_2  # 60% follow route B-C-D-E-A-F-G
 
         self.grocery_list = self.select_items()
+
+        env.customers_in_store +=1
+
         # Arrival at supermarket
         if random.random() < 0.8:
             self.had_cart = True
@@ -58,6 +64,7 @@ class Customer(sim.Component):
                 bread_6 = math.ceil(items/6)
                 for n in range(bread_6):
                     yield self.hold(120)
+                # print('bread counter occup is:', bread_counter.length.print)
                 self.release(bread_counter)
 
             elif dep == "D" and items != 0:
@@ -83,6 +90,7 @@ class Customer(sim.Component):
         self.leave(checkout_line)
         if self.isclaiming(cart):
             self.release(cart)
+        env.customers_in_store -= 1
 
         # Record the end time when the customer leaves
         departure_time = env.now()
@@ -126,6 +134,7 @@ cart = sim.Resource('Shopping cart', capacity=45)
 bread_counter = sim.Resource('Bread counter', capacity=4)
 cheese_counter = sim.Resource('Cheese counter', capacity=3)
 checkout_lanes = [sim.Queue(f'Checkout lane {i + 1}') for i in range(3)]  # 3 checkout lanes
+env.customers_in_store = 0
 
 
 class ArrivalGenerator(sim.Component):
@@ -148,12 +157,76 @@ arrival_data = [
     (18, 90), (19, 40)
 ]
 
+# List to track customer count over time
+customer_count_over_time = []
 
-# Create a few test customers
+# Tracker component to log the number of customers in the store every 60 seconds
+class Tracker(sim.Component):
+    def process(self):
+        while True:
+            global shop_info
+            checkout_1 = len(checkout_lanes[0])
+            checkout_2 = len(checkout_lanes[1])
+            checkout_3 = len(checkout_lanes[2])
+            checkout_requestors = checkout_1 + checkout_2 + checkout_3
+            new_data = pd.DataFrame({
+                'time': [env.now()],
+                'customers_in_store': [env.customers_in_store],
+                'cart_requestors': [len(cart.requesters())],
+                'bread_requestors': [len(bread_counter.requesters())],
+                'cheese_requestors': [len(cheese_counter.requesters())],
+                'checkout_requestors': [checkout_requestors]
+
+            })
+            shop_info = pd.concat([shop_info, new_data], ignore_index=True)
+            yield self.hold(60)  # Log every 60 seconds
+
 ArrivalGenerator().activate()
+Tracker().activate()
+
 env.run(12 * 3600)  # Simulate for 12 hours
+
+print(shop_info)
+
+# print(bread_counter.print_statistics())
+
 
 # print(f'Averages:\n bread wait {customers_info['bread_wait'].mean()} \n cheese wait {customers_info['cheese_wait'].mean()}\n cart wait {customers_info['cart_wait'].mean()}')
 # print(f'Max:\n bread wait {customers_info['bread_wait'].max()} \n cheese wait {customers_info['cheese_wait'].max()}\n cart wait {customers_info['cart_wait'].max()}')
 # print(f'Min:\n bread wait {customers_info['bread_wait'].min()} \n cheese wait {customers_info['cheese_wait'].min()}\n cart wait {customers_info['cart_wait'].min()}')
-print(bread_counter.print_statistics())
+df = shop_info
+
+
+
+# Function to convert simulation time (seconds) to clock time starting from 08:00
+def convert_time(sim_time):
+    start_time = datetime(2024, 1, 1, 8, 0, 0)  # Simulation starts at 08:00
+    return (start_time + timedelta(seconds=sim_time)).strftime('%H:%M')
+
+
+# Apply the convert_time function to the time column
+df['time_clock'] = df['time'].apply(convert_time)
+
+# Plotting the data with converted time
+plt.figure(figsize=(12, 8))
+hourly_times = [datetime(2024, 1, 1, hour, 0, 0).strftime('%H:%M') for hour in range(8, 21)]
+# Plot customers in store over time
+plt.plot(df['time_clock'], df['customers_in_store'], label='Customers in Store', color='blue')
+
+# Plot requestors for cart, bread, and cheese counters
+plt.plot(df['time_clock'], df['cart_requestors'], label='Cart Requestors', color='green')
+plt.plot(df['time_clock'], df['bread_requestors'], label='Bread Counter Requestors', color='orange')
+plt.plot(df['time_clock'], df['cheese_requestors'], label='Cheese Counter Requestors', color='red')
+plt.plot(df['time_clock'], df['checkout_requestors'], label='checkout Requestors', color='purple')
+
+# Adding labels and title
+plt.xlabel('Time (HH:MM)')
+plt.ylabel('Number of People')
+plt.title('Number of Customers in Store and Resource Requestors Over Time')
+plt.xticks(hourly_times, rotation=45)  # Rotate the x-axis labels for better readability
+plt.grid(True)
+plt.legend()
+
+# Show the plot
+plt.tight_layout()  # Adjust the layout so labels don’t overlap
+plt.show()
