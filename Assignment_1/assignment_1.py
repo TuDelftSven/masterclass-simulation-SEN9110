@@ -14,7 +14,6 @@ def simulation(replications):
         # Initialize the simulation environment
         env = sim.Environment()
 
-
         # Set seeds
         sim.random_seed(i)
         random.seed(i)
@@ -34,6 +33,7 @@ def simulation(replications):
         env.route_1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G']  # 40% follow this route
         env.route_2 = ['B', 'C', 'D', 'E', 'A', 'F', 'G']  # 60% follow this route
 
+        #setting up dataframes for plotting and information gain
         env.customers_info = pd.DataFrame(columns=['customer', 'cart', 'arrival_time', 'departure_time', 'total_time', 'cart_wait', 'bread_wait', 'cheese_wait', 'grocery_list', 'item_count', 'route'])
         env.shop_info = pd.DataFrame(columns=["time", 'customers_in_store', 'cart_requestors','bread_requestors','cheese_requestors', 'checkout_requestors'])
 
@@ -60,8 +60,8 @@ def simulation(replications):
                     self.had_cart = False
                     cart_wait = 0
 
-
-
+                #doing groceries and what to do for each department
+                #bread counter
                 for dep, items in self.grocery_list.items():
                     if dep == "C" and items != 0:
                         bread_start = env.now()
@@ -70,9 +70,9 @@ def simulation(replications):
                         bread_6 = math.ceil(items/6)
                         for n in range(bread_6):
                             yield self.hold(120)
-                        # print('bread counter occup is:', bread_counter.length.print)
                         self.release(bread_counter)
 
+                    #cheese department
                     elif dep == "D" and items != 0:
                         cheese_start = env.now()
                         yield self.request(cheese_counter)
@@ -81,6 +81,8 @@ def simulation(replications):
                         for n in range(cheese_6):
                             yield self.hold(60)
                         self.release(cheese_counter)
+
+                    #regular shopping
                     else:
                         for n in range(items):
                             yield self.hold(sim.Uniform(20, 30).sample())
