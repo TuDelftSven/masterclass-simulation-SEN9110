@@ -1,0 +1,284 @@
+import salabim as sim
+import random
+import math
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+
+from PIL.ImageColor import colormap
+
+
+def simulation(replications):
+    # Lists that will hold all the data
+    shop_info_all = []
+    customer_info_all = []
+
+    for i in range(replications):
+        # Setting so that yield can be used
+        sim.yieldless(False)
+
+        # Initialize the simulation environment
+        env = sim.Environment()
+
+        # Set seeds
+        sim.random_seed(i)
+        random.seed(i)
+
+        # Define the departments and their item distributions (min, mode, max)
+        env.departments_items = {
+            'A': (4, 10, 22),  # Fruit & Vegetables
+            'B': (0, 4, 9),  # Meat & Fish
+            'C': (1, 4, 10),  # Bread
+            'D': (1, 3, 11),  # Cheese & Dairy
+            'E': (6, 17, 35),  # Canned & packed food
+            'F': (2, 8, 19),  # Frozen foods
+            'G': (1, 9, 20),  # Drinks
+        }
+
+        # Define routes
+        env.route_1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G']  # 40% follow this route
+        env.route_2 = ['B', 'C', 'D', 'E', 'A', 'F', 'G']  # 60% follow this route
+
+        # setting up dataframes for plotting and information gain
+        env.customers_info = pd.DataFrame(
+            columns=['customer', 'cart', 'arrival_time', 'departure_time', 'total_time', 'cart_wait', 'bread_wait',
+                     'cheese_wait', 'grocery_list', 'item_count', 'route'])
+        env.shop_info = pd.DataFrame(
+            columns=["time", 'customers_in_store', 'cart_requestors', 'bread_requestors', 'cheese_requestors',
+                     'checkout_requestors'])
+
+        # Creation of the resources and queues
+        cart = sim.Resource('Shopping cart', capacity=45)
+        bread_counter = sim.Resource('Bread counter', capacity=4)
+        cheese_counter = sim.Resource('Cheese counter', capacity=3)
+        checkout_lanes = [sim.Queue(f'Checkout lane {i + 1}') for i in range(3)]  # 3 checkout lanes
+        env.customers_in_store = 0
+
+        # Trial of using store function to create the shop and aisles
+        shop = sim.Store("Grocery Shop")
+        dep_A = sim.Store("Fruit & Vegetable department")
+        dep_A_aisle_1 = sim.Store("Fruit & Vegetable Aisle 1", capacity=6)
+        dep_A_aisle_2 = sim.Store("Fruit & Vegetable Aisle 2", capacity=6)
+
+        dep_B = sim.Store("Meat & Fish department")
+        dep_B_aisle_1 = sim.Store("Meat & Fish Aisle 1", capacity=6)
+        dep_B_aisle_2 = sim.Store("Meat & Fish Aisle 2", capacity=6)
+
+        dep_E = sim.Store("Canned & Packed Food department")
+        dep_E_aisle_1 = sim.Store("Canned & Packed Food Aisle 1", capacity=6)
+        dep_E_aisle_2 = sim.Store("Canned & Packed Food Aisle 2", capacity=6)
+
+        dep_F = sim.Store("Frozen Foods department")
+        dep_F_aisle_1 = sim.Store("Frozen Food Aisle 1", capacity=6)
+        dep_F_aisle_2 = sim.Store("Frozen Food Aisle 2", capacity=6)
+
+        dep_G = sim.Store("Drinks department")
+        dep_G_aisle_1 = sim.Store("Drinks Aisle 1", capacity=6)
+        dep_G_aisle_2 = sim.Store("Drinks Aisle 2", capacity=6)
+
+        env.department_map_aisles = {
+            'A': [dep_A_aisle_1, dep_A_aisle_2],
+            'B': [dep_B_aisle_1, dep_B_aisle_2],
+            'E': [dep_E_aisle_1, dep_E_aisle_2],
+            'F': [dep_F_aisle_1, dep_F_aisle_2],
+            'G': [dep_G_aisle_1, dep_G_aisle_2]
+        }
+
+        env.department_map = {
+            'A': [dep_A],
+            'B': [dep_B],
+            'E': [dep_E],
+            'F': [dep_F],
+            'G': [dep_G]
+        }
+
+        # Customer arrival rates per hour
+        arrival_data = [
+            (8, 30), (9, 80), (10, 110), (11, 90), (12, 80),
+            (13, 70), (14, 80), (15, 90), (16, 100), (17, 120),
+            (18, 90), (19, 40)
+        ]
+
+        # Setup of environment and variables are now done
+        # Time to set up the customer classes and trackers
+
+        class Customer(sim.Component):
+
+            #The regular process of a customer shopping
+            def process(self):
+
+                # Let the Customer enter the store
+                self.arrival_time = env.now()
+                self.enter(shop)
+
+                # Decide which route to take and which items to select
+                if random.random() < 0.4:
+                    self.route = env.route_1  # 40% follow route A-B-C-D-E-F-G
+                else:
+                    self.route = env.route_2  # 60% follow route B-C-D-E-A-F-G
+                self.grocery_list = self.select_items()
+
+                # Decide if the Customer will be using a Cart or not
+                if random.random() < 0.8:
+                    self.had_cart = True
+                    yield self.request(cart)  # 80% of customers take a cart
+                else:
+                    self.had_cart = False
+
+                # Start walking the route and getting groceries
+                for dep, items in self.grocery_list.items():
+                    # Walking to department
+                    yield self.hold(sim.Uniform(10,20))
+
+                    # If not bread or cheese with their counters
+                    if dep not in ["C", "D"]:
+                        t = env.now()
+                        half = items // 2
+                        department = env.department_map.get(dep, [])[0]
+                        self.enter(department)
+                        aisles = env.department_map_aisles.get(dep, [])
+                        choosen_aisle = min(aisles, key=lambda aisle: aisle.length())
+                        for aisle in aisles:
+                            if aisle is not choosen_aisle:
+                                other_aisle = aisle
+                        try:
+                            self.enter(choosen_aisle)
+                        except sim.QueueFullError:
+                            yield self.to_store(choosen_aisle, self)
+                        for n in range(half):
+                            yield self.hold(sim.Uniform(20, 30).sample())
+                        self.leave(choosen_aisle)
+                        yield self.hold(sim.Uniform(5,15))
+                        try:
+                            self.enter(other_aisle)
+                        except sim.QueueFullError:
+                            yield self.to_store(other_aisle, self)
+                        for n in range(half):
+                            yield self.hold(sim.Uniform(20, 30).sample())
+                        self.leave(other_aisle)
+                        self.leave(department)
+
+
+                    # Now for the bread department
+                    elif dep in "C" and items != 0:
+                        yield self.request(bread_counter)
+                        bread_6 = math.ceil(items/6)
+                        for n in range(bread_6):
+                            yield self.hold(sim.Uniform(100,140))
+                        self.release(bread_counter)
+
+                    # Now for Cheese department
+                    elif dep == "D" and items != 0:
+                        yield self.request(cheese_counter)
+                        cheese_6 = math.ceil(items / 6)
+                        for n in range(cheese_6):
+                            yield self.hold(sim.Uniform(50,70))
+                        self.release(cheese_counter)
+
+                checkout_line = min(checkout_lanes, key=lambda lane: lane.length())
+                self.enter(checkout_line)
+                item_count = 0
+                for dep, item in self.grocery_list.items():
+                    item_count += item
+                yield self.hold(item_count * 1.1 + sim.Uniform(40, 60).sample())  # Scanning & payment
+                self.leave(checkout_line)
+                if self.isclaiming(cart):
+                    self.release(cart)
+                self.leave(shop)
+
+            # The process of giving a Customer a grocery list
+            def select_items(self):
+                # Generate a random number of items for each department (based on min, mode, and max data)
+                grocery_list = {}
+                for dep in self.route:
+                    min_val, mode_val, max_val = env.departments_items[dep]
+                    items_picked = int(sim.Triangular(min_val, max_val, mode_val).sample())
+                    grocery_list[dep] = items_picked
+                return grocery_list
+
+
+            # from docs to animate object
+            def animation_objects(self, id):
+                '''
+                the way the component is determined by the id, specified in AnimateQueue
+                'text' means just the name
+                any other value represents the colour
+                '''
+                if id == 'text':
+                    ao0 = sim.AnimateText(text=self.name(), textcolor='fg', text_anchor='nw')
+                    return 0, 16, ao0
+                else:
+                    ao0 = sim.AnimateRectangle((-10, 0, 10, 10),
+                                               fillcolor=id, textcolor='white', arg=self)
+                    return 23, 0, ao0
+
+
+        class ArrivalGenerator(sim.Component):
+            def process(self):
+                tot = 0
+                for hour, arrival_rate in arrival_data:
+                    tot += arrival_rate
+                    # Generate customers for the current hour
+                    for _ in range(arrival_rate):
+                        Customer().activate()
+                        # Spread the arrivals uniformly over the hour (3600 seconds)
+                        yield self.hold(3600/arrival_rate)
+
+
+
+        # The code to activate the simulation
+        ArrivalGenerator().activate()
+
+        env.background_color('20%gray')
+
+        # Animation
+        # Checkout lanes
+        qa0 = sim.AnimateQueue(checkout_lanes[0], x=100, y=50, title='checkout lane 0', direction='e', id='blue')
+        qa1 = sim.AnimateQueue(checkout_lanes[1], x=100, y=90, title='checkout lane 1', direction='e', id='blue')
+        qa2 = sim.AnimateQueue(checkout_lanes[2], x=100, y=130, title='checkout lane 2', direction='e', id='blue')
+
+        # Bread_counter
+        b0 = sim.AnimateQueue(bread_counter.requesters(), x=100, y=170, title='bread queue', direction='e', id='red')
+
+        # Cheese_counter
+        c0 = sim.AnimateQueue(cheese_counter.requesters(), x=100, y=210, title='cheese queue', direction='e', id='yellow')
+
+        # cart queue
+        cart0 = sim.AnimateQueue(cart.requesters(), x=100, y=250, title='cart queue', direction='e', id='green')
+
+        # departments
+        d0 = sim.AnimateText(text=lambda: f"People in Fruit & Vegetables department: {dep_A.length()}",
+                x=75, y=300, fontsize=12)
+        d1 = sim.AnimateText(text=lambda: f"People in Meat & Fish department: {dep_B.length()}",
+                             x=75, y=330, fontsize=12)
+        a0 = sim.AnimateText(text=lambda: f"People in Canned & packed food department: {dep_E.length()}",
+                             x=75, y=360, fontsize=12)
+        a0 = sim.AnimateText(text=lambda: f"People in Frozen Foods department: {dep_F.length()}",
+                             x=75, y=390, fontsize=12)
+        a0 = sim.AnimateText(text=lambda: f"People in Drinks department: {dep_G.length()}",
+                             x=75, y=420, fontsize=12)
+
+        sim.AnimateMonitor(shop.length, x=10, y=450, width=480, height=100, horizontal_scale=0.015, vertical_scale=0.8)
+
+        sim.AnimateMonitor(shop.length_of_stay, x=10, y=570, width=480, height=100, horizontal_scale=0.015, vertical_scale=0.028)
+
+        env.animate(True)
+        env.modelname('Demo queue animation')
+
+
+
+
+
+        # Tracker().activate()
+        env.run(12 * 3600)  # Simulate for 12 hours
+
+        # Appending the dataframes into our datalists
+        shop_info_all.append(env.shop_info)
+        customer_info_all.append(env.customers_info)
+
+        # Resetting the environmental variables
+        env.reset_now()
+
+    return shop_info_all, customer_info_all
+
+simulation(1)
