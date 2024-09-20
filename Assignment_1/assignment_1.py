@@ -37,10 +37,13 @@ def simulation(replications):
         env.customers_info = pd.DataFrame(columns=['customer', 'cart', 'arrival_time', 'departure_time', 'total_time', 'cart_wait', 'bread_wait', 'cheese_wait', 'grocery_list', 'item_count', 'route'])
         env.shop_info = pd.DataFrame(columns=["time", 'customers_in_store', 'cart_requestors','bread_requestors','cheese_requestors', 'checkout_requestors'])
 
+        shop = sim.Store("Grocery Shop")
+
         class Customer(sim.Component):
             def process(self):
                 # Decide which route the customer will follow
                 arrival_time = (env.now())  # Log the simulation time when the customer arrives
+
                 if random.random() < 0.4:
                     self.route = env.route_1  # 40% follow route A-B-C-D-E-F-G
                 else:
@@ -102,6 +105,8 @@ def simulation(replications):
 
                 # Record the end time when the customer leaves
                 departure_time = env.now()
+
+
 
                 # Calculate total shopping time for the customer
                 total_time = departure_time - arrival_time
@@ -193,7 +198,6 @@ def simulation(replications):
         env.run(12 * 3600)  # Simulate for 12 hours
         shop_info_all.append(env.shop_info)
         customer_info_all.append(env.customers_info)
-
         env.reset_now()
 
     return shop_info_all, customer_info_all

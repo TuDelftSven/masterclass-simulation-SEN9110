@@ -4,11 +4,11 @@ import pandas as pd
 
 #Run the simulation with x replications
 #Provinding 2 separate lists of dataframes containing different variables
-replications = 10
+replications = 1
 all_shop_info_list, all_customer_info_list = simulation(replications)
 
 #Plot the amount of shoppers in queues and in the store during the day for a specific run
-run_number = 1
+run_number = 0
 plot_shop_info(run_number, all_shop_info_list)
 
 #Creating full customer dataframe instead of list of dataframes

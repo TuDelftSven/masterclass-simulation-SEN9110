@@ -228,7 +228,7 @@ def simulation(replications):
 
         # The code to activate the simulation
         ArrivalGenerator().activate()
-
+        env.speed(1028)
         env.background_color('20%gray')
 
         # Animation
@@ -258,16 +258,14 @@ def simulation(replications):
         a0 = sim.AnimateText(text=lambda: f"People in Drinks department: {dep_G.length()}",
                              x=75, y=420, fontsize=12)
 
-        sim.AnimateMonitor(shop.length, x=10, y=450, width=480, height=100, horizontal_scale=0.015, vertical_scale=0.8)
+        sim.AnimateMonitor(shop.length, x=10, y=450, width=960, height=100, horizontal_scale=0.025, vertical_scale=0.8,
+                           title= 'Customer in Shop')
 
-        sim.AnimateMonitor(shop.length_of_stay, x=10, y=570, width=480, height=100, horizontal_scale=0.015, vertical_scale=0.028)
+        sim.AnimateMonitor(shop.length_of_stay, x=10, y=570, width=960, height=100, horizontal_scale=0.025,
+                           vertical_scale=0.026, title="Shop duration per Customer")
 
         env.animate(True)
-        env.modelname('Demo queue animation')
-
-
-
-
+        env.modelname('Grocery store animation')
 
         # Tracker().activate()
         env.run(12 * 3600)  # Simulate for 12 hours
@@ -275,6 +273,7 @@ def simulation(replications):
         # Appending the dataframes into our datalists
         shop_info_all.append(env.shop_info)
         customer_info_all.append(env.customers_info)
+        print(bread_counter.requesters().length_of_stay.mean())
 
         # Resetting the environmental variables
         env.reset_now()
