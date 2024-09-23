@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from PIL.ImageColor import colormap
 
 
-def simulation(replications):
+def simulation(replications, animation=True):
     # Lists that will hold all the data
-    shop_info_all = []
+    shop_info_all = pd.DataFrame()
     customer_info_all = []
 
     for i in range(replications):
@@ -57,24 +57,24 @@ def simulation(replications):
         # Trial of using store function to create the shop and aisles
         shop = sim.Store("Grocery Shop")
         dep_A = sim.Store("Fruit & Vegetable department")
-        dep_A_aisle_1 = sim.Store("Fruit & Vegetable Aisle 1", capacity=6)
-        dep_A_aisle_2 = sim.Store("Fruit & Vegetable Aisle 2", capacity=6)
+        dep_A_aisle_1 = sim.Resource("Fruit & Vegetable Aisle 1", capacity=10)
+        dep_A_aisle_2 = sim.Resource("Fruit & Vegetable Aisle 2", capacity=10)
 
         dep_B = sim.Store("Meat & Fish department")
-        dep_B_aisle_1 = sim.Store("Meat & Fish Aisle 1", capacity=6)
-        dep_B_aisle_2 = sim.Store("Meat & Fish Aisle 2", capacity=6)
+        dep_B_aisle_1 = sim.Resource("Meat & Fish Aisle 1", capacity=10)
+        dep_B_aisle_2 = sim.Resource("Meat & Fish Aisle 2", capacity=10)
 
         dep_E = sim.Store("Canned & Packed Food department")
-        dep_E_aisle_1 = sim.Store("Canned & Packed Food Aisle 1", capacity=6)
-        dep_E_aisle_2 = sim.Store("Canned & Packed Food Aisle 2", capacity=6)
+        dep_E_aisle_1 = sim.Resource("Canned & Packed Food Aisle 1", capacity=10)
+        dep_E_aisle_2 = sim.Resource("Canned & Packed Food Aisle 2", capacity=10)
 
         dep_F = sim.Store("Frozen Foods department")
-        dep_F_aisle_1 = sim.Store("Frozen Food Aisle 1", capacity=6)
-        dep_F_aisle_2 = sim.Store("Frozen Food Aisle 2", capacity=6)
+        dep_F_aisle_1 = sim.Resource("Frozen Food Aisle 1", capacity=10)
+        dep_F_aisle_2 = sim.Resource("Frozen Food Aisle 2", capacity=10)
 
         dep_G = sim.Store("Drinks department")
-        dep_G_aisle_1 = sim.Store("Drinks Aisle 1", capacity=6)
-        dep_G_aisle_2 = sim.Store("Drinks Aisle 2", capacity=6)
+        dep_G_aisle_1 = sim.Resource("Drinks Aisle 1", capacity=10)
+        dep_G_aisle_2 = sim.Resource("Drinks Aisle 2", capacity=10)
 
         env.department_map_aisles = {
             'A': [dep_A_aisle_1, dep_A_aisle_2],
@@ -91,6 +91,17 @@ def simulation(replications):
             'F': [dep_F],
             'G': [dep_G]
         }
+
+        resources = [dep_A_aisle_1.requesters(), dep_A_aisle_2.requesters(), dep_B_aisle_1.requesters(),
+                     dep_B_aisle_2.requesters(),
+                     dep_E_aisle_1.requesters(), dep_E_aisle_2.requesters(), dep_F_aisle_1.requesters(),
+                     dep_F_aisle_2.requesters(), bread_counter.requesters(),
+                  cheese_counter.requesters(), cart.requesters()]
+
+        queues = [checkout_lanes[0], checkout_lanes[1], checkout_lanes[2]]
+        stores = [dep_A, dep_B, dep_E, dep_F, dep_G, shop]
+
+        all = resources + queues + stores
 
         # Customer arrival rates per hour
         arrival_data = [
@@ -137,25 +148,27 @@ def simulation(replications):
                         department = env.department_map.get(dep, [])[0]
                         self.enter(department)
                         aisles = env.department_map_aisles.get(dep, [])
-                        choosen_aisle = min(aisles, key=lambda aisle: aisle.length())
+                        choosen_aisle = min(aisles, key=lambda aisle: aisle.claimers())
                         for aisle in aisles:
                             if aisle is not choosen_aisle:
                                 other_aisle = aisle
-                        try:
-                            self.enter(choosen_aisle)
-                        except sim.QueueFullError:
-                            yield self.to_store(choosen_aisle, self)
+
+                        # Customer with cart takes 2 spaces in an aisle instead of 1
+                        if self.isclaiming(cart):
+                            yield self.request((choosen_aisle, 2))
+                        else:
+                            yield self.request(choosen_aisle)
                         for n in range(half):
                             yield self.hold(sim.Uniform(20, 30).sample())
-                        self.leave(choosen_aisle)
+                        self.release(choosen_aisle)
                         yield self.hold(sim.Uniform(5,15))
-                        try:
-                            self.enter(other_aisle)
-                        except sim.QueueFullError:
-                            yield self.to_store(other_aisle, self)
+                        if self.isclaiming(cart):
+                            yield self.request((other_aisle, 2))
+                        else:
+                            yield self.request(other_aisle)
                         for n in range(half):
                             yield self.hold(sim.Uniform(20, 30).sample())
-                        self.leave(other_aisle)
+                        self.release(other_aisle)
                         self.leave(department)
 
 
@@ -208,9 +221,9 @@ def simulation(replications):
                     ao0 = sim.AnimateText(text=self.name(), textcolor='fg', text_anchor='nw')
                     return 0, 16, ao0
                 else:
-                    ao0 = sim.AnimateRectangle((-10, 0, 10, 10),
+                    ao0 = sim.AnimateRectangle((-5, 0, 2, 20),
                                                fillcolor=id, textcolor='white', arg=self)
-                    return 23, 0, ao0
+                    return 9, 0, ao0
 
 
         class ArrivalGenerator(sim.Component):
@@ -224,60 +237,97 @@ def simulation(replications):
                         # Spread the arrivals uniformly over the hour (3600 seconds)
                         yield self.hold(3600/arrival_rate)
 
-
+        # This trackers logs data every 60 sec in case you want to use this data for graphs
+        class Tracker(sim.Component):
+            def process(self):
+                row = 0
+                env.customer_df = pd.DataFrame()
+                while True:
+                    time = env.now()
+                    env.customer_df.loc[row,'time'] = time
+                    for item in all:
+                        env.customer_df.loc[row, f'{item}'] = item.length()
+                    yield self.hold(60)  # Log every 60 seconds
+                    row += 1
 
         # The code to activate the simulation
         ArrivalGenerator().activate()
+        Tracker().activate()
         env.speed(1028)
         env.background_color('20%gray')
 
         # Animation
         # Checkout lanes
-        qa0 = sim.AnimateQueue(checkout_lanes[0], x=100, y=50, title='checkout lane 0', direction='e', id='blue')
-        qa1 = sim.AnimateQueue(checkout_lanes[1], x=100, y=90, title='checkout lane 1', direction='e', id='blue')
-        qa2 = sim.AnimateQueue(checkout_lanes[2], x=100, y=130, title='checkout lane 2', direction='e', id='blue')
+        qa0 = sim.AnimateQueue(checkout_lanes[0], x=100, y=20, title='checkout lane 0', direction='e', id='blue')
+        qa1 = sim.AnimateQueue(checkout_lanes[1], x=100, y=60, title='checkout lane 1', direction='e', id='blue')
+        qa2 = sim.AnimateQueue(checkout_lanes[2], x=100, y=100, title='checkout lane 2', direction='e', id='blue')
 
         # Bread_counter
-        b0 = sim.AnimateQueue(bread_counter.requesters(), x=100, y=170, title='bread queue', direction='e', id='red')
+        b0 = sim.AnimateQueue(bread_counter.requesters(), x=100, y=140, title='bread queue', direction='e', id='red')
 
         # Cheese_counter
-        c0 = sim.AnimateQueue(cheese_counter.requesters(), x=100, y=210, title='cheese queue', direction='e', id='yellow')
+        c0 = sim.AnimateQueue(cheese_counter.requesters(), x=100, y=180, title='cheese queue', direction='e', id='yellow')
 
         # cart queue
-        cart0 = sim.AnimateQueue(cart.requesters(), x=100, y=250, title='cart queue', direction='e', id='green')
+        cart0 = sim.AnimateQueue(cart.requesters(), x=100, y=220, title='cart queue', direction='e', id='green')
+
+        # List of all aisles
+        aisles = [
+            dep_A_aisle_1,
+            dep_A_aisle_2,
+            dep_B_aisle_1,
+            dep_B_aisle_2,
+            dep_E_aisle_1,
+            dep_E_aisle_2,
+            dep_F_aisle_1,
+            dep_F_aisle_2
+        ]
+
+        # Starting y value for the first queue
+        y_value = 260
+
+        # Generating the AnimateQueue for each aisle with a 40 increment in y value
+        for aisle in aisles:
+            sim.AnimateQueue(aisle.requesters(), x=100, y=y_value, title=f'{aisle.name()} Queue', direction='e', id='purple')
+            y_value += 40  # Increment y value by 40 for the next aisle queue
+
 
         # departments
         d0 = sim.AnimateText(text=lambda: f"People in Fruit & Vegetables department: {dep_A.length()}",
-                x=75, y=300, fontsize=12)
+                x=500, y=300, fontsize=12)
         d1 = sim.AnimateText(text=lambda: f"People in Meat & Fish department: {dep_B.length()}",
-                             x=75, y=330, fontsize=12)
+                             x=500, y=330, fontsize=12)
         a0 = sim.AnimateText(text=lambda: f"People in Canned & packed food department: {dep_E.length()}",
-                             x=75, y=360, fontsize=12)
+                             x=500, y=210, fontsize=12)
         a0 = sim.AnimateText(text=lambda: f"People in Frozen Foods department: {dep_F.length()}",
-                             x=75, y=390, fontsize=12)
+                             x=500, y=240, fontsize=12)
         a0 = sim.AnimateText(text=lambda: f"People in Drinks department: {dep_G.length()}",
-                             x=75, y=420, fontsize=12)
+                             x=500, y=270, fontsize=12)
 
-        sim.AnimateMonitor(shop.length, x=10, y=450, width=960, height=100, horizontal_scale=0.025, vertical_scale=0.8,
+        sim.AnimateMonitor(shop.length, x=500, y=450, width=400, height=100, horizontal_scale=0.0125, vertical_scale=0.8,
                            title= 'Customer in Shop')
+        sim.AnimateText(text=lambda: f"People in Shop: {shop.length()}",
+                        x=500, y=420, fontsize=12)
 
-        sim.AnimateMonitor(shop.length_of_stay, x=10, y=570, width=960, height=100, horizontal_scale=0.025,
-                           vertical_scale=0.026, title="Shop duration per Customer")
+        sim.AnimateMonitor(shop.length_of_stay, x=500, y=600, width=400, height=100, horizontal_scale=0.0125,
+                           vertical_scale=0.020, title="Shop duration per Customer")
+        sim.AnimateText(text=lambda: f"Average shopping time: {shop.length_of_stay.mean()}",
+                        x=500, y=570, fontsize=12)
 
-        env.animate(True)
+        env.animate(animation)
         env.modelname('Grocery store animation')
 
-        # Tracker().activate()
-        env.run(12 * 3600)  # Simulate for 12 hours
 
-        # Appending the dataframes into our datalists
-        shop_info_all.append(env.shop_info)
-        customer_info_all.append(env.customers_info)
-        print(bread_counter.requesters().length_of_stay.mean())
+        env.run(12.75 * 3600)  # Simulate for 12 hours + 45 mins without people entering just leaving
 
+
+        for queue in all:
+            shop_info_all.loc[i, f'{queue} mean length of stay'] = queue.length_of_stay.mean()
+            shop_info_all.loc[i, f'{queue} max length of stay'] = queue.length_of_stay.mean()
+            shop_info_all.loc[i, f'{queue} 95% percentile length of stay'] = queue.length_of_stay.percentile(95)
+
+        customer_info_all.append(env.customer_df)
         # Resetting the environmental variables
         env.reset_now()
 
     return shop_info_all, customer_info_all
-
-simulation(1)
