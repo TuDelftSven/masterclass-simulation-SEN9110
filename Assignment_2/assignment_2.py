@@ -304,7 +304,7 @@ def simulation(replications, animation=True):
         a0 = sim.AnimateText(text=lambda: f"People in Drinks department: {dep_G.length()}",
                              x=500, y=270, fontsize=12)
 
-        sim.AnimateMonitor(shop.length, x=500, y=450, width=400, height=100, horizontal_scale=0.0125, vertical_scale=0.8,
+        sim.AnimateMonitor(shop.length, x=500, y=440, width=400, height=100, horizontal_scale=0.0125, vertical_scale=0.8,
                            title= 'Customer in Shop')
         sim.AnimateText(text=lambda: f"People in Shop: {shop.length()}",
                         x=500, y=420, fontsize=12)
