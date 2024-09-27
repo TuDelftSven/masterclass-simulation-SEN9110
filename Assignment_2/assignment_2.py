@@ -254,6 +254,8 @@ def simulation(replications, animation=True):
         # The code to activate the simulation
         ArrivalGenerator().activate()
         Tracker().activate()
+
+        # Total time is 45900 so animation now takes roughly 45 sec
         env.speed(1028)
         env.background_color('20%gray')
 
@@ -321,13 +323,15 @@ def simulation(replications, animation=True):
 
         env.run(12.75 * 3600)  # Simulate for 12 hours + 45 mins without people entering just leaving
 
-
+        # Creating mean, max and 95 percentile shop information for this run
         for queue in all:
             shop_info_all.loc[i, f'{queue} mean length of stay'] = queue.length_of_stay.mean()
             shop_info_all.loc[i, f'{queue} max length of stay'] = queue.length_of_stay.mean()
             shop_info_all.loc[i, f'{queue} 95% percentile length of stay'] = queue.length_of_stay.percentile(95)
 
+        # Creating customer_df from the tracker
         customer_info_all.append(env.customer_df)
+
         # Resetting the environmental variables
         env.reset_now()
 
