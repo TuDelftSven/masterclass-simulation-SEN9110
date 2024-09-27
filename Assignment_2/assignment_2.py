@@ -16,6 +16,7 @@ def simulation(replications, animation=True):
     for i in range(replications):
         # Setting so that yield can be used
         sim.yieldless(False)
+        print(f'Run number {i} with animation={animation} has begun')
 
         # Initialize the simulation environment
         env = sim.Environment()
@@ -258,18 +259,18 @@ def simulation(replications, animation=True):
 
         # Animation
         # Checkout lanes
-        qa0 = sim.AnimateQueue(checkout_lanes[0], x=100, y=20, title='checkout lane 0', direction='e', id='blue')
-        qa1 = sim.AnimateQueue(checkout_lanes[1], x=100, y=60, title='checkout lane 1', direction='e', id='blue')
-        qa2 = sim.AnimateQueue(checkout_lanes[2], x=100, y=100, title='checkout lane 2', direction='e', id='blue')
+        qa0 = sim.AnimateQueue(checkout_lanes[0], x=100, y=20, title='Checkout lane 0', direction='e', id='blue')
+        qa1 = sim.AnimateQueue(checkout_lanes[1], x=100, y=60, title='Checkout lane 1', direction='e', id='blue')
+        qa2 = sim.AnimateQueue(checkout_lanes[2], x=100, y=100, title='Checkout lane 2', direction='e', id='blue')
 
         # Bread_counter
-        b0 = sim.AnimateQueue(bread_counter.requesters(), x=100, y=140, title='bread queue', direction='e', id='red')
+        b0 = sim.AnimateQueue(bread_counter.requesters(), x=100, y=140, title='Bread counter queue', direction='e', id='red')
 
         # Cheese_counter
-        c0 = sim.AnimateQueue(cheese_counter.requesters(), x=100, y=180, title='cheese queue', direction='e', id='yellow')
+        c0 = sim.AnimateQueue(cheese_counter.requesters(), x=100, y=180, title='Cheese counter queue', direction='e', id='yellow')
 
         # cart queue
-        cart0 = sim.AnimateQueue(cart.requesters(), x=100, y=220, title='cart queue', direction='e', id='green')
+        cart0 = sim.AnimateQueue(cart.requesters(), x=100, y=220, title='Cart queue', direction='e', id='green')
 
         # List of all aisles
         aisles = [
