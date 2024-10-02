@@ -58,24 +58,24 @@ def simulation(replications, animation=True):
         # Trial of using store function to create the shop and aisles
         shop = sim.Store("Grocery Shop")
         dep_A = sim.Store("Fruit & Vegetable department")
-        dep_A_aisle_1 = sim.Resource("Fruit & Vegetable Aisle 1", capacity=10)
-        dep_A_aisle_2 = sim.Resource("Fruit & Vegetable Aisle 2", capacity=10)
+        dep_A_aisle_1 = sim.Resource("Fruit & Vegetable Aisle 1", capacity=5)
+        dep_A_aisle_2 = sim.Resource("Fruit & Vegetable Aisle 2", capacity=5)
 
         dep_B = sim.Store("Meat & Fish department")
-        dep_B_aisle_1 = sim.Resource("Meat & Fish Aisle 1", capacity=10)
-        dep_B_aisle_2 = sim.Resource("Meat & Fish Aisle 2", capacity=10)
+        dep_B_aisle_1 = sim.Resource("Meat & Fish Aisle 1", capacity=5)
+        dep_B_aisle_2 = sim.Resource("Meat & Fish Aisle 2", capacity=5)
 
         dep_E = sim.Store("Canned & Packed Food department")
-        dep_E_aisle_1 = sim.Resource("Canned & Packed Food Aisle 1", capacity=10)
-        dep_E_aisle_2 = sim.Resource("Canned & Packed Food Aisle 2", capacity=10)
+        dep_E_aisle_1 = sim.Resource("Canned & Packed Food Aisle 1", capacity=5)
+        dep_E_aisle_2 = sim.Resource("Canned & Packed Food Aisle 2", capacity=5)
 
         dep_F = sim.Store("Frozen Foods department")
-        dep_F_aisle_1 = sim.Resource("Frozen Food Aisle 1", capacity=10)
-        dep_F_aisle_2 = sim.Resource("Frozen Food Aisle 2", capacity=10)
+        dep_F_aisle_1 = sim.Resource("Frozen Food Aisle 1", capacity=5)
+        dep_F_aisle_2 = sim.Resource("Frozen Food Aisle 2", capacity=5)
 
         dep_G = sim.Store("Drinks department")
-        dep_G_aisle_1 = sim.Resource("Drinks Aisle 1", capacity=10)
-        dep_G_aisle_2 = sim.Resource("Drinks Aisle 2", capacity=10)
+        dep_G_aisle_1 = sim.Resource("Drinks Aisle 1", capacity=5)
+        dep_G_aisle_2 = sim.Resource("Drinks Aisle 2", capacity=5)
 
         env.department_map_aisles = {
             'A': [dep_A_aisle_1, dep_A_aisle_2],
@@ -92,6 +92,23 @@ def simulation(replications, animation=True):
             'F': [dep_F],
             'G': [dep_G]
         }
+
+        env.coords = {
+            dep_A_aisle_1: [5, 13.5, 10, 18],
+            dep_A_aisle_2: [13.5, 22, 10, 18],
+            dep_B_aisle_1: [5, 13.5, 5, 10],
+            dep_B_aisle_2: [13.5, 22, 5, 10],
+            dep_E_aisle_1: [22, 27, 10, 22],
+            dep_E_aisle_2: [27, 32, 10, 22],
+            dep_F_aisle_1: [32, 35, 18, 22],
+            dep_F_aisle_2: [35, 38, 18, 22],
+            dep_G_aisle_1: [32, 35, 10, 18],
+            dep_G_aisle_2: [35, 38, 10, 18],
+            bread_counter: [1, 5, 12, 15],  # Single aisle
+            cheese_counter: [1, 5, 15, 22],  # Single aisle
+            "checkout": [32, 38, 5, 10]  # Checkout area
+        }
+
 
         resources = [dep_A_aisle_1.requesters(), dep_A_aisle_2.requesters(), dep_B_aisle_1.requesters(),
                      dep_B_aisle_2.requesters(),
@@ -130,18 +147,24 @@ def simulation(replications, animation=True):
                     self.route = env.route_2  # 60% follow route B-C-D-E-A-F-G
                 self.grocery_list = self.select_items()
 
+
                 # Decide if the Customer will be using a Cart or not
                 if random.random() < 0.8:
                     self.had_cart = True
                     yield self.request(cart)  # 80% of customers take a cart
+                    self.speed = sim.Triangular(2,5,3).sample()
+                    self.speed = self.speed / 3.6
                 else:
                     self.had_cart = False
+                    self.speed = sim.Uniform(4,5).sample()
+                    self.speed = self.speed / 3.6
+
+                # everyone starts at the location of the carts.
+                # Location is given in (x,y)
+                self.location = [25,5]
 
                 # Start walking the route and getting groceries
                 for dep, items in self.grocery_list.items():
-                    # Walking to department
-                    yield self.hold(sim.Uniform(10,20))
-
                     # If not bread or cheese with their counters
                     if dep not in ["C", "D"]:
                         t = env.now()
@@ -150,31 +173,85 @@ def simulation(replications, animation=True):
                         self.enter(department)
                         aisles = env.department_map_aisles.get(dep, [])
                         choosen_aisle = min(aisles, key=lambda aisle: aisle.claimers())
+                        for aisle, coords in env.coords.items():
+                            if aisle is choosen_aisle:
+                                x_min = coords[0]
+                                x_max = coords[1]
+                                y_min = coords[2]
+                                y_max = coords[3]
+
+
                         for aisle in aisles:
                             if aisle is not choosen_aisle:
                                 other_aisle = aisle
 
+                        # Walk to aisle
+                        x_mod = (x_max + x_min) / 2
+                        y_mod = (y_max + y_min) / 2
+                        x = sim.Triangular(x_min, x_max, x_mod).sample()
+                        y = sim.Triangular(y_min, y_max, y_mod).sample()
+                        yield self.hold(self.distance_to_time(x, y))
+
                         # Customer with cart takes 2 spaces in an aisle instead of 1
                         if self.isclaiming(cart):
-                            yield self.request((choosen_aisle, 2))
+                            yield self.request((choosen_aisle, 1))
                         else:
-                            yield self.request(choosen_aisle)
+                            yield self.request((choosen_aisle,0)) #People with baskets can walk freely so no blockade
+
+                        #Walk in aisle and picking items
                         for n in range(half):
-                            yield self.hold(sim.Uniform(20, 30).sample())
+                            x_mod = (x_max + x_min)/2
+                            y_mod = (y_max + y_min)/2
+                            x = sim.Triangular(x_min, x_max, x_mod).sample()
+                            y = sim.Triangular(y_min, y_max, y_mod).sample()
+                            yield self.hold(self.distance_to_time(x, y))
+                            yield self.hold(sim.Uniform(17, 27).sample()) #Lowered pick-up time from 20:30 to 17:27 because of separate walking which has average of 4.4 but that includes walking between departments as well
                         self.release(choosen_aisle)
-                        yield self.hold(sim.Uniform(5,15))
+
+                        #walk to other aisle in department
+                        for aisle, coords in env.coords.items():
+                            if aisle is other_aisle:
+                                x_min = coords[0]
+                                x_max = coords[1]
+                                y_min = coords[2]
+                                y_max = coords[3]
+                        x_mod = (x_max + x_min) / 2
+                        y_mod = (y_max + y_min) / 2
+                        x = sim.Triangular(x_min, x_max, x_mod).sample()
+                        y = sim.Triangular(y_min, y_max, y_mod).sample()
+                        yield self.hold(self.distance_to_time(x, y))
+
                         if self.isclaiming(cart):
-                            yield self.request((other_aisle, 2))
+                            yield self.request((other_aisle, 1))
                         else:
-                            yield self.request(other_aisle)
+                            yield self.request((other_aisle, 0))
                         for n in range(half):
-                            yield self.hold(sim.Uniform(20, 30).sample())
+                            x_mod = (x_max + x_min) / 2
+                            y_mod = (y_max + y_min) / 2
+                            x = sim.Triangular(x_min, x_max, x_mod).sample()
+                            y = sim.Triangular(y_min, y_max, y_mod).sample()
+                            yield self.hold(self.distance_to_time(x, y))
+                            yield self.hold(sim.Uniform(17, 27).sample())
                         self.release(other_aisle)
                         self.leave(department)
 
 
                     # Now for the bread department
                     elif dep in "C" and items != 0:
+
+                        #walk to bread department
+                        for aisle, coords in env.coords.items():
+                            if aisle is bread_counter:
+                                x_min = coords[0]
+                                x_max = coords[1]
+                                y_min = coords[2]
+                                y_max = coords[3]
+                        x_mod = (x_max + x_min) / 2
+                        y_mod = (y_max + y_min) / 2
+                        x = sim.Triangular(x_min, x_max, x_mod).sample()
+                        y = sim.Triangular(y_min, y_max, y_mod).sample()
+                        yield self.hold(self.distance_to_time(x, y))
+
                         yield self.request(bread_counter)
                         bread_6 = math.ceil(items/6)
                         for n in range(bread_6):
@@ -184,19 +261,64 @@ def simulation(replications, animation=True):
 
                     # Now for Cheese department
                     elif dep == "D" and items != 0:
+                        #walk to cheese
+                        for aisle, coords in env.coords.items():
+                            if aisle is cheese_counter:
+                                x_min = coords[0]
+                                x_max = coords[1]
+                                y_min = coords[2]
+                                y_max = coords[3]
+                        x_mod = (x_max + x_min) / 2
+                        y_mod = (y_max + y_min) / 2
+                        x = sim.Triangular(x_min, x_max, x_mod).sample()
+                        y = sim.Triangular(y_min, y_max, y_mod).sample()
+                        yield self.hold(self.distance_to_time(x, y))
+
                         yield self.request(cheese_counter)
                         cheese_6 = math.ceil(items / 6)
                         for n in range(cheese_6):
                             yield self.hold(sim.Uniform(50,70))
                         self.release(cheese_counter)
 
-                checkout_line = min(checkout_lanes, key=lambda lane: lane.length())
+                # walk to checkout
+                for aisle, coords in env.coords.items():
+                    if aisle == "checkout":
+                        x_min = coords[0]
+                        x_max = coords[1]
+                        y_min = coords[2]
+                        y_max = coords[3]
+                x_mod = (x_max + x_min) / 2
+                y_mod = (y_max + y_min) / 2
+                x = sim.Triangular(x_min, x_max, x_mod).sample()
+                y = sim.Triangular(y_min, y_max, y_mod).sample()
+                yield self.hold(self.distance_to_time(x, y))
+
+
+                # picking checkout based on items and length
+                expected_time_checkout = []
+                for checkout in checkout_lanes:
+                    sum = 0 #amount of items in basked
+                    for person in checkout:
+                        for value in person.grocery_list.values():
+                            sum += value
+                    expected_time_checkout.append(sum * 1.1 + 50 * checkout.length())
+                checkout_line = checkout_lanes[expected_time_checkout.index(min(expected_time_checkout))]
+
+
                 self.enter(checkout_line)
                 item_count = 0
                 for dep, item in self.grocery_list.items():
                     item_count += item
+                if random.random() < 0.05:
+                    yield self.hold(sim.Exponential(12).sample())
+                if random.random() < 0.02:
+                    yield self.hold(sim.Uniform(30,45).sample())
                 yield self.hold(item_count * 1.1 + sim.Uniform(40, 60).sample())  # Scanning & payment
                 self.leave(checkout_line)
+
+                # Walk to cart/exit
+                yield self.hold(self.distance_to_time(25, 5)) #coords of cart location
+
                 if self.isclaiming(cart):
                     self.release(cart)
                 self.leave(shop)
@@ -226,6 +348,12 @@ def simulation(replications, animation=True):
                     ao0 = sim.AnimateRectangle((-5, 0, 2, 20),
                                                fillcolor=id, textcolor='white', arg=self)
                     return 9, 0, ao0
+
+            def distance_to_time(self,x2,y2):
+                distance = math.sqrt((x2 - self.location[0]) ** 2 + (y2 - self.location[1]) ** 2)
+                walking_time = distance / self.speed
+                self.location = [x2,y2] # Update location
+                return walking_time
 
 
         class ArrivalGenerator(sim.Component):
