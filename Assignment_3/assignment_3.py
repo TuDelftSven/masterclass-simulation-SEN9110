@@ -98,15 +98,15 @@ def simulation(replications, animation=True):
             dep_A_aisle_2: [13.5, 22, 10, 18],
             dep_B_aisle_1: [5, 13.5, 5, 10],
             dep_B_aisle_2: [13.5, 22, 5, 10],
-            dep_E_aisle_1: [22, 27, 10, 22],
-            dep_E_aisle_2: [27, 32, 10, 22],
-            dep_F_aisle_1: [32, 35, 18, 22],
-            dep_F_aisle_2: [35, 38, 18, 22],
-            dep_G_aisle_1: [32, 35, 10, 18],
-            dep_G_aisle_2: [35, 38, 10, 18],
-            bread_counter: [1, 5, 12, 15],  # Single aisle
-            cheese_counter: [1, 5, 15, 22],  # Single aisle
-            "checkout": [32, 38, 5, 10]  # Checkout area
+            dep_E_aisle_1: [22, 27, 18, 30],
+            dep_E_aisle_2: [27, 32, 18, 30],
+            dep_F_aisle_1: [32, 35, 22, 30],
+            dep_F_aisle_2: [35, 38, 22, 30],
+            dep_G_aisle_1: [32, 35, 15, 22],
+            dep_G_aisle_2: [35, 38, 15, 22],
+            bread_counter: [1, 5, 5, 15],  # Single aisle
+            cheese_counter: [1, 5, 15, 25],  # Single aisle
+            "checkout": [32, 38, 5, 15]  # Checkout area
         }
 
 
